@@ -2,6 +2,10 @@ name: CI
 
 on:
   push:
+    # Branches only. '**' matches every branch but excludes tag refs, so tagging a
+    # commit already built on main doesn't pay for a second macOS run — the Release
+    # workflow builds that commit anyway.
+    branches: ['**']
   pull_request:
 
 jobs:
