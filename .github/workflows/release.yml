@@ -1,17 +1,26 @@
 name: Release
 
+# Triggered on every push, then gated by the `if:` on the job below.
+#
+# The obvious spelling — a single `push:` block carrying both `tags: ['v*']` and
+# `branches: [production]` — is unreliable: a tag ref cannot simultaneously satisfy
+# a branches filter, and a tag pushed in the same operation as a branch may not
+# raise its own event at all. Either way the release silently never runs, which is
+# exactly what happened to v1.0.0. Filtering in `if:` instead is unambiguous.
+# Pushes that match nothing below are skipped before a runner is allocated, so
+# this costs no macOS minutes.
 on:
   push:
-    tags:
-      - 'v*'
-    branches:
-      - production
   workflow_dispatch:
 
 jobs:
   release:
     # asckey shells out to `xcrun altool`, so it can only be built on macOS.
     runs-on: macos-latest
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.ref == 'refs/heads/production' ||
+      github.event_name == 'workflow_dispatch'
     permissions:
       contents: write
     steps:
