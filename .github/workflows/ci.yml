@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    # asckey shells out to `xcrun altool`, so it only builds/runs on macOS.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        # No _test.go files exist yet; `go test ./...` reports "no test files"
+        # and exits 0 in that case, so this stays green until tests are added.
+        run: go test ./...

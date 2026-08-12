@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - production
+  workflow_dispatch:
+
+jobs:
+  release:
+    # asckey shells out to `xcrun altool`, so it can only be built on macOS.
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history + tags, needed to resolve a short SHA / describe-style version.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Derive version
+        id: version
+        run: |
+          # Tag pushes (v1.2.3) get the tag name minus the leading "v".
+          # Everything else (production branch pushes, manual dispatch) gets a
+          # deterministic dev version keyed off the short commit SHA.
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.0.0-$(git rev-parse --short HEAD)"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build darwin/arm64
+        run: |
+          # Apple Silicon only, per product decision — no amd64/other GOOS/GOARCH builds.
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o dist/asckey .
+
+      - name: Package artifact
+        id: package
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          NAME="asckey_${VERSION}_darwin_arm64"
+          mkdir -p "$NAME"
+          cp dist/asckey "$NAME/"
+          cp README.md "$NAME/"
+          tar -czf "${NAME}.tar.gz" "$NAME"
+          shasum -a 256 "${NAME}.tar.gz" > checksums.txt
+          echo "archive=${NAME}.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifact
+        # Always keep the build retrievable from the workflow run, even if the
+        # release step below is skipped or fails for some reason.
+        uses: actions/upload-artifact@v4
+        with:
+          name: asckey_${{ steps.version.outputs.version }}_darwin_arm64
+          path: |
+            ${{ steps.package.outputs.archive }}
+            checksums.txt
+
+      - name: Publish tagged release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          files: |
+            ${{ steps.package.outputs.archive }}
+            checksums.txt
+
+      - name: Publish rolling production-latest prerelease
+        # production-branch pushes and manual dispatch republish the same
+        # "production-latest" tag/release rather than creating a new one each
+        # time. softprops/action-gh-release updates the existing release for a
+        # given tag_name (and overwrite_files defaults to true), so re-running
+        # this on a new commit replaces the old assets instead of erroring.
+        if: github.ref_type != 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: production-latest
+          name: production-latest
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          # Don't let this rolling dev build shadow the real "Latest release" tag.
+          make_latest: 'false'
+          files: |
+            ${{ steps.package.outputs.archive }}
+            checksums.txt

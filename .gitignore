@@ -1,0 +1,19 @@
+# Built binary (go build -o asckey .)
+/asckey
+/dist/
+
+# Never let key material near the repo
+*.p8
+*.pem
+*.mobileprovision
+*.cer
+
+# Local key registry, if someone points ASCKEY_HOME at the repo
+config.json
+/keys/
+
+# Project marker naming a key — machine-local, never committed
+.asckey
+
+# macOS
+.DS_Store
